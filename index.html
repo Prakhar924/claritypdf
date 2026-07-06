@@ -179,7 +179,7 @@
   .editor-stage{
     overflow:auto;padding:1.2rem;background:#EDF0F6;display:flex;justify-content:center;
   }
-  .canvas-stack{position:relative;box-shadow:0 4px 18px rgba(22,33,58,.2)}
+  .canvas-stack{position:relative;box-shadow:0 4px 18px rgba(22,33,58,.2);margin:auto;flex-shrink:0}
   .canvas-stack canvas{display:block}
   #annC{position:absolute;inset:0;touch-action:none;cursor:crosshair}
   .txt-input{
@@ -346,6 +346,9 @@
       <button class="tool" data-tool="wo">▭ Whiteout</button>
       <label>Color <input type="color" id="colorPick" value="#16213A"></label>
       <label>Size <input type="range" id="sizePick" min="1" max="48" value="18"></label>
+      <button class="tool" id="zoomOut" title="Zoom out">−</button>
+      <span id="zoomLbl" style="font-size:.78rem;font-weight:700;color:var(--muted);min-width:44px;text-align:center">100%</span>
+      <button class="tool" id="zoomIn" title="Zoom in">＋</button>
       <span style="flex:1"></span>
       <button class="tool" id="undoBtn">↺ Undo</button>
       <button class="tool" id="clearAnnBtn">Clear</button>
@@ -692,28 +695,51 @@ document.querySelectorAll('.tool[data-tool]').forEach(b=>{
   });
 });
 
+let editDims = null;
+
 async function openEditor(idx){
   editIdx = idx;
   const p = pages[idx];
   workAnns = JSON.parse(JSON.stringify(p.ann));
-  const dims = await pageDims(p);
+  editDims = await pageDims(p);
   const maxW = Math.min(window.innerWidth - 80, 920);
   const maxH = window.innerHeight - 240;
-  editScale = Math.max(.25, Math.min(1.6, maxW/dims.w, maxH/dims.h));
-  baseC.width = annC.width = Math.round(dims.w*editScale);
-  baseC.height = annC.height = Math.round(dims.h*editScale);
-  stack.style.width = baseC.width + 'px';
-  stack.style.height = baseC.height + 'px';
-  await paintPage(p, baseC.getContext('2d'), editScale, dims);
-  redrawAnn();
+  editScale = Math.max(.25, Math.min(1.6, maxW/editDims.w, maxH/editDims.h));
+  await renderEditor();
   editor.hidden = false;
 }
 
+async function renderEditor(){
+  const p = pages[editIdx];
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = Math.round(editDims.w*editScale);
+  const cssH = Math.round(editDims.h*editScale);
+  baseC.width = annC.width = Math.round(cssW*dpr);
+  baseC.height = annC.height = Math.round(cssH*dpr);
+  baseC.style.width = annC.style.width = cssW + 'px';
+  baseC.style.height = annC.style.height = cssH + 'px';
+  stack.style.width = cssW + 'px';
+  stack.style.height = cssH + 'px';
+  await paintPage(p, baseC.getContext('2d'), editScale*dpr, editDims);
+  redrawAnn();
+  const lbl = document.getElementById('zoomLbl');
+  if(lbl) lbl.textContent = Math.round(editScale*100) + '%';
+}
+
+async function setZoom(mult){
+  commitTextInput();
+  editScale = Math.max(.3, Math.min(3, editScale*mult));
+  await renderEditor();
+}
+document.getElementById('zoomIn').addEventListener('click', ()=>setZoom(1.25));
+document.getElementById('zoomOut').addEventListener('click', ()=>setZoom(0.8));
+
 function redrawAnn(){
+  const dpr = window.devicePixelRatio || 1;
   const ctx = annC.getContext('2d');
   ctx.clearRect(0,0,annC.width,annC.height);
-  drawAnns(ctx, workAnns, editScale);
-  if(preview) drawAnns(ctx, [preview], editScale);
+  drawAnns(ctx, workAnns, editScale*dpr);
+  if(preview) drawAnns(ctx, [preview], editScale*dpr);
 }
 
 function pos(e){
